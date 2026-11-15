@@ -1,0 +1,22 @@
+{
+  "name": "open-infinite-canvas-workspace",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MIT",
+  "packageManager": "pnpm@10.28.0",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "build": "pnpm --filter open-infinite-canvas build && pnpm --filter @open-infinite-canvas/react build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm --filter open-infinite-canvas test",
+    "test:e2e": "pnpm build && pnpm --filter open-infinite-canvas-demo build && pnpm --filter open-infinite-canvas-bench test:e2e",
+    "bench": "pnpm build && pnpm --filter open-infinite-canvas-bench bench",
+    "bench:quick": "pnpm build && pnpm --filter open-infinite-canvas-bench bench:quick",
+    "demo": "pnpm build && pnpm --filter open-infinite-canvas-demo dev",
+    "lint:prose": "node scripts/lint-prose.mjs"
+  },
+  "devDependencies": {
+    "typescript": "~6.0.2"
+  }
+}

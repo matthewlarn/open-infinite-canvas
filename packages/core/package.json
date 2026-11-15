@@ -1,0 +1,28 @@
+{
+  "name": "open-infinite-canvas",
+  "version": "0.1.0",
+  "description": "An infinite canvas engine for hundreds of live screens. A few are awake, the rest are pictures. No framework, no runtime dependencies.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": ["*.css"],
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
+    "./styles.css": "./dist/styles.css",
+    "./package.json": "./package.json"
+  },
+  "files": ["dist", "README.md", "LICENSE"],
+  "keywords": ["infinite-canvas", "canvas", "zoom", "pan", "level-of-detail", "virtualization"],
+  "scripts": {
+    "build": "tsup && tsc -p tsconfig.build.json && cp src/styles.css dist/styles.css",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "tsup": "^8.5.0",
+    "typescript": "~6.0.2",
+    "vitest": "^3.2.4"
+  }
+}

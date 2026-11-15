@@ -1,0 +1,37 @@
+{
+  "name": "open-infinite-canvas-bench",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Playwright benchmarks and behaviour checks for open-infinite-canvas, with the naive baselines it is measured against.",
+  "scripts": {
+    "build:app": "vite build app",
+    "build:app:react18": "REACT18=1 vite build app --outDir dist-react18",
+    "typecheck": "tsc --noEmit",
+    "bench": "pnpm build:app && node scripts/run.cjs --variants engine,today,naive --sizes 100,300,1000 --repeats 2 && node scripts/compare.cjs",
+    "bench:quick": "pnpm build:app && node scripts/run.cjs --variants engine --sizes 100,300,1000 --repeats 2 && node scripts/compare.cjs",
+    "bench:compare": "node scripts/compare.cjs",
+    "bench:all": "bash scripts/all.sh",
+    "test:e2e": "pnpm build:app && pnpm build:app:react18 && playwright test"
+  },
+  "dependencies": {
+    "@open-infinite-canvas/react": "workspace:*",
+    "open-infinite-canvas": "workspace:*",
+    "open-infinite-canvas-demo": "workspace:*",
+    "react": "19.3.1",
+    "react-18": "npm:react@18.3.1",
+    "react-dom": "19.3.1",
+    "react-dom-18": "npm:react-dom@18.3.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1",
+    "@types/node": "^22.0.0",
+    "@types/pngjs": "^6.0.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.3.0",
+    "pngjs": "7.0.0",
+    "typescript": "~6.0.2",
+    "vite": "8.3.8"
+  }
+}

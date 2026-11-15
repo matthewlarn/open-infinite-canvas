@@ -1,0 +1,69 @@
+/*
+ * open-infinite-canvas. The canvas's own furniture. Four rules do the work. The rest is focus and screen
+ * reader plumbing.
+ *
+ * Two custom properties can be set on the viewport or any ancestor:
+ *   --ic-canvas   the background behind the screens
+ *   --ic-accent   the focus outline of the canvas itself
+ */
+
+.ic-viewport {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  /* The canvas owns every gesture inside it. Without this a pinch zooms the page and a drag scrolls it. */
+  touch-action: none;
+  overscroll-behavior: none;
+  background: var(--ic-canvas, #f2f2f0);
+  cursor: default;
+}
+.ic-viewport:focus-visible { outline: 3px solid var(--ic-accent, #1f1f1c); outline-offset: -3px; }
+
+/* The far layer. One canvas, a little larger than the viewport, under everything else. The engine sets its
+   place and size, and moves it with a transform between drawings. */
+.ic-far { position: absolute; display: block; transform-origin: 0 0; will-change: transform; }
+
+/* The live layer. One transform moves every live screen. It has no size of its own. */
+.ic-world { position: absolute; left: 0; top: 0; width: 0; height: 0; transform-origin: 0 0; }
+
+/*
+ * One screen. `contain: strict` promises the browser that nothing inside can change anything outside, so a
+ * screen that animates or reflows costs only itself.
+ */
+.ic-frame {
+  position: absolute;
+  contain: strict;
+  isolation: isolate;
+  overflow: hidden;
+  /* Opaque, so a live screen always covers the picture of itself that is drawn on the canvas beneath it. */
+  background: Canvas;
+}
+/* Mounted so a picture can be taken. Never laid out or painted. */
+.ic-frame[data-mode="staging"] { content-visibility: hidden; }
+.ic-frame[data-mode="parked"] { display: none; }
+
+/* Iframe mode. The iframe fills its frame. */
+.ic-iframe { display: block; width: 100%; height: 100%; border: 0; }
+
+/* Read and focused, not seen. The selection ring on the canvas is the visible focus mark. */
+.ic-list, .ic-sr {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  list-style: none;
+}
+.ic-list button { all: unset; }
+
+/* The outline of a frame is drawn on the far canvas, at one device pixel whatever the zoom. A canvas does not
+   follow forced colours, so in that mode each live frame carries a real outline instead. */
+@media (forced-colors: active) {
+  .ic-frame { outline: 1px solid CanvasText; }
+}

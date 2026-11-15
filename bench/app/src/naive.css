@@ -1,0 +1,16 @@
+/* The baseline canvas. One transformed element holds every screen. */
+.naive-viewport { position: relative; width: 100%; height: 100%; overflow: hidden; touch-action: none; overscroll-behavior: none; background: var(--ic-canvas); }
+.naive-content { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+.naive-frame { position: absolute; }
+.naive-body { width: 100%; height: 100%; overflow: hidden; box-shadow: 0 0 0 1px var(--ic-border); }
+.naive-label { position: absolute; left: 0; bottom: 100%; padding-bottom: 6px; font: 500 14px system-ui, sans-serif; color: var(--ic-label); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+
+/* The `today` variant: names stay one size on screen by reading the zoom from an inherited custom property. */
+[data-zoom-var] .naive-label { transform: scale(calc(1 / var(--z))); transform-origin: bottom left; max-width: none; width: calc(100% * var(--z)); }
+[data-zoom-var] .naive-body { box-shadow: 0 0 0 calc(1px / var(--z)) var(--ic-border); }
+
+/* The fence and content-visibility. */
+.naive-root { width: 100%; height: 100%; }
+.naive-iframe { display: block; border: 0; }
+.naive-root[data-fence] { --z: 1; }
+.naive-root[data-cv] { content-visibility: auto; }

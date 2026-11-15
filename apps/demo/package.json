@@ -1,0 +1,30 @@
+{
+  "name": "open-infinite-canvas-demo",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "The giant demo: 300 or more screens of a tool library app on one canvas.",
+  "exports": {
+    "./screens": "./src/screens/registry.tsx",
+    "./screens.css": "./src/screens/demo.css"
+  },
+  "scripts": {
+    "dev": "vite --port 5311 --strictPort",
+    "build": "vite build",
+    "preview": "vite preview --port 5312 --strictPort",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@open-infinite-canvas/react": "workspace:*",
+    "open-infinite-canvas": "workspace:*",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.3.0",
+    "typescript": "~6.0.2",
+    "vite": "8.3.8"
+  }
+}

@@ -1,0 +1,97 @@
+{
+ "measuredAt": "2026-11-15T07:39:34.419Z",
+ "passed": 18,
+ "total": 18,
+ "checks": [
+  {
+   "name": "Zoom to cursor",
+   "pass": true,
+   "detail": "zoom 0.060 to 64.000, the point under the pointer moved 0.240px"
+  },
+  {
+   "name": "Wheel pans",
+   "pass": true,
+   "detail": "moved -120.0, -80.0 for a wheel of 120, 80"
+  },
+  {
+   "name": "Drag pans",
+   "pass": true,
+   "detail": "moved 263.0, 158.0 for a drag of 100, 60 (a glide may add to it)"
+  },
+  {
+   "name": "Click selects the picture under the pointer",
+   "pass": true,
+   "detail": "clicked frame 71, selected 71"
+  },
+  {
+   "name": "Double click opens the screen and it comes alive",
+   "pass": true,
+   "detail": "zoom 0.94, 15 live screens"
+  },
+  {
+   "name": "Typed text survives while the screen is parked",
+   "pass": true,
+   "detail": "tier while zoomed out: parked. Value on return: \"needle nose pliers\""
+  },
+  {
+   "name": "A live screen keeps running",
+   "pass": true,
+   "detail": "clock went from 09:41:06 to 09:41:08 in 2.2s"
+  },
+  {
+   "name": "A parked screen stops running",
+   "pass": true,
+   "detail": "clock read 09:41:08 then 09:41:08 after 3.2s parked"
+  },
+  {
+   "name": "A parked screen resumes from where it stopped",
+   "pass": true,
+   "detail": "clock on return: 09:41:08"
+  },
+  {
+   "name": "Mounted screens stay inside the budget",
+   "pass": true,
+   "detail": "21 live, 24 parked, 159 unmounted on the way"
+  },
+  {
+   "name": "An evicted screen starts again from its declared state",
+   "pass": true,
+   "detail": "same DOM node on return: false. Search field on return: \"\" (it was \"spirit level\")"
+  },
+  {
+   "name": "Tab then arrow keys move between screens",
+   "pass": true,
+   "detail": "started on \"Catalogue, default 04\", arrived on \"Join, filled 05\", selection follows focus: true"
+  },
+  {
+   "name": "Enter opens the screen and moves focus inside it",
+   "pass": true,
+   "detail": "focus is on a BUTTON inside f136 (live)"
+  },
+  {
+   "name": "Escape returns to that screen's entry in the list",
+   "pass": true,
+   "detail": "focus returned to f136"
+  },
+  {
+   "name": "Every screen is in the accessibility tree, mounted or not",
+   "pass": true,
+   "detail": "300 entries in the list \"Harbor Street Tool Library, every screen: 300 screens\" while 28 of 300 screens are mounted. Canvas node: group \"Harbor Street Tool Library, every screen\""
+  },
+  {
+   "name": "Selection is announced",
+   "pass": true,
+   "detail": "live region says: \"Join, filled 05. Screen 111 of 300.\""
+  },
+  {
+   "name": "Arrow keys and plus work on the focused canvas",
+   "pass": true,
+   "detail": "zoom 0.944 to 1.180"
+  },
+  {
+   "name": "A far layer moved by the compositor lines up with a fresh drawing",
+   "pass": true,
+   "detail": "drawings before the move 3, after it 3, after a forced redraw 4. Mean difference from a fresh drawing 1.22 levels. The same with a 3px shift 3.46"
+  }
+ ]
+}

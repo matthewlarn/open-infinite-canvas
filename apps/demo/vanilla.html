@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>open-infinite-canvas without a framework</title>
+    <style>
+      html, body { height: 100%; margin: 0; font: 400 16px/1.5 system-ui, sans-serif; }
+      #stage { height: 100%; }
+      .card { height: 100%; box-sizing: border-box; padding: 24px; background: #ffffff; color: #1c1b18; }
+      .card h2 { margin: 0 0 8px; font-size: 24px; }
+      .card button { min-height: 44px; padding: 8px 16px; font: inherit; }
+    </style>
+  </head>
+  <body>
+    <div id="stage"></div>
+    <script type="module" src="/src/vanilla.ts"></script>
+  </body>
+</html>
