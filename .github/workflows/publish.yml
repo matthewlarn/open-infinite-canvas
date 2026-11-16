@@ -1,0 +1,47 @@
+name: Publish
+
+# Publishes both packages to npm with trusted publishing (no token is stored).
+# Run it by hand from the Actions tab. Choose "next" for a pre-release or "latest" for a release.
+# Before the first run, each package must exist on npm and have this repository and this
+# workflow file (publish.yml) set as its trusted publisher in the package settings.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: npm dist-tag
+        type: choice
+        options: [next, latest]
+        default: next
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck && pnpm test
+      - run: pnpm build
+      - name: Publish
+        run: |
+          set -euo pipefail
+          for pkg in packages/core packages/react; do
+            name=$(node -p "require('./$pkg/package.json').name")
+            version=$(node -p "require('./$pkg/package.json').version")
+            if npm view "$name@$version" version >/dev/null 2>&1; then
+              echo "$name@$version is already on npm. Skipping."
+              continue
+            fi
+            (cd "$pkg" && npm publish --access public --provenance --tag "${{ inputs.tag }}")
+          done
