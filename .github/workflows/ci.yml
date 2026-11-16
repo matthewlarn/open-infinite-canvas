@@ -19,6 +19,8 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # The React package types against the built core, so build first.
+      - run: pnpm build
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm lint:prose
