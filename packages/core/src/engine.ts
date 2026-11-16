@@ -6,19 +6,15 @@ import { loadScreenshot } from "./pictures/screenshot.js";
 import { PLAIN_MEMORY, type CaptureTimings, type Picture, type PictureProvider } from "./pictures/types.js";
 import { neighbourIndex, type Direction } from "./layout.js";
 import { GridIndex } from "./spatial.js";
-import { DEFAULT_LOD, type Camera, type FrameSpec, type LodConfig, type Rect, type Tier } from "./types.js";
+import { DEFAULT_INPUT, DEFAULT_LOD, type Camera, type FrameSpec, type InputConfig, type LodConfig, type Rect, type Tier } from "./types.js";
 
-/** The far canvas is drawn again once the zoom has changed by this factor since it was last drawn. */
+/** The default for `farZoomSlack`: the far canvas is drawn again once the zoom has changed by this factor. */
 const FAR_ZOOM_SLACK = 1.12;
 
-/** Most frames mounted at once only to have their picture taken. */
-const STAGING_MAX = 8;
-/** Most frames newly mounted for a picture in one animation frame. */
-const STAGING_PER_FRAME = 4;
-/** Pictures are taken together once this many are mounted. One image for several screens costs less than one each. */
-const STAGING_GROUP = 4;
-/** Most pictures being loaded from files at once. */
-const STATIC_MAX = 6;
+/** Fields of {@link LodConfig} that count something. They are rounded to whole numbers. */
+const LOD_COUNTS = ["maxLive", "maxParked", "maxThumbs", "maxPreviews", "mountsStill", "mountsMoving", "evictionsPerFrame", "stagingMax", "stagingPerFrame", "stagingGroup", "captureConcurrency", "fileLoadsMax"] as const;
+/** Counts that stop all picture work at zero, so they never go below one. */
+const LOD_AT_LEAST_ONE = new Set<string>(["stagingMax", "stagingGroup", "captureConcurrency", "fileLoadsMax"]);
 
 /** A frame as the engine holds it: the spec, plus its tier and its pictures. Read it, do not write to it. */
 export type EngineFrame = FarFrame &
@@ -77,6 +73,49 @@ export type EngineOptions = {
   minZoom?: number;
   /** Largest zoom. Defaults to 64, which is 6,400%. */
   maxZoom?: number;
+  /** How pointer, wheel and keys move the camera. Anything left out comes from {@link DEFAULT_INPUT}. */
+  input?: Partial<InputConfig>;
+  /** Highest device pixel ratio the far canvas is drawn at. A lower cap saves memory and drawing time on dense screens. 0, the default, means no cap. */
+  maxPixelRatio?: number;
+  /** False to hide the far canvas and stop drawing it. Only live screens are then seen. For measuring what it costs. Defaults to true. */
+  farLayer?: boolean;
+  /** How pictures are smoothed when the far canvas scales them. `auto`, the default, is low while moving and high once settled. */
+  pictureSmoothing?: "auto" | "high" | "low" | "off";
+  /** The far canvas is drawn again once the zoom has changed by this factor since its last drawing. Defaults to 1.12. */
+  farZoomSlack?: number;
+  /**
+   * True, the default, hides a staging frame with `content-visibility: hidden`, so it is never laid out or
+   * painted. False hides it with `visibility: hidden`, so it is laid out like any other. For measuring the saving.
+   */
+  contentVisibility?: boolean;
+};
+
+/**
+ * What {@link CanvasEngine.reconfigure} takes. The same as {@link EngineOptions}, except that `reducedMotion`
+ * can be null to go back to following the system setting.
+ */
+export type EngineReconfigure = Omit<EngineOptions, "reducedMotion" | "colors" | "onPictureError"> & { reducedMotion?: boolean | null };
+
+/** Every setting the engine is running with. What {@link CanvasEngine.getOptions} returns. */
+export type EngineSettings = {
+  lod: LodConfig;
+  input: InputConfig;
+  /** The name of the picture provider. The default provider reports the one it is using right now. */
+  provider: string;
+  minZoom: number;
+  maxZoom: number;
+  willChange: "gesture" | "always" | "never";
+  warmup: boolean;
+  origin: "fixed" | "floating";
+  /** True when the camera jumps instead of gliding. */
+  reducedMotion: boolean;
+  /** True when `reducedMotion` follows the system setting. */
+  followsSystemMotion: boolean;
+  maxPixelRatio: number;
+  farLayer: boolean;
+  pictureSmoothing: "auto" | "high" | "low" | "off";
+  farZoomSlack: number;
+  contentVisibility: boolean;
 };
 
 /** Counters for tuning budgets and for benchmarks. Not needed to use the canvas. */
@@ -112,6 +151,10 @@ export type EngineStats = {
   /** Engine frames since the counters were last reset, and how many of them drew the far canvas again. */
   engineFrames: number;
   farDraws: number;
+  /** Pictures being made right now. */
+  capturesInFlight: number;
+  /** Frames waiting for a picture: staging frames, and frames the background pass has still to reach. */
+  pictureQueue: number;
 };
 
 /**
@@ -124,8 +167,10 @@ export type EngineStats = {
  * Make one with {@link createCanvas}.
  */
 export class CanvasEngine {
-  /** The level of detail settings in force. */
+  /** The level of detail settings in force. Change them with {@link CanvasEngine.reconfigure}. */
   readonly cfg: LodConfig;
+  /** The input settings in force. Read by the input handlers on every event. Change them with {@link CanvasEngine.reconfigure}. */
+  readonly input: InputConfig;
   /** Every frame, in the order they were given. */
   readonly frames: EngineFrame[] = [];
   private byId = new Map<string, EngineFrame>();
@@ -134,7 +179,7 @@ export class CanvasEngine {
   private viewport: HTMLElement | null = null;
   private world: HTMLElement | null = null;
   private provider: PictureProvider;
-  private opts: Required<Pick<EngineOptions, "willChange" | "warmup" | "origin" | "minZoom" | "maxZoom">>;
+  private opts: Required<Pick<EngineOptions, "willChange" | "warmup" | "origin" | "minZoom" | "maxZoom" | "maxPixelRatio" | "farLayer" | "pictureSmoothing" | "farZoomSlack" | "contentVisibility">>;
   private lod: LodScheduler<EngineFrame>;
   private reduced = false;
   private motionQuery: MediaQueryList | null = null;
@@ -186,7 +231,8 @@ export class CanvasEngine {
   private tickMs = { sum: 0, n: 0, max: 0 };
 
   constructor(options: EngineOptions = {}) {
-    this.cfg = { ...DEFAULT_LOD, ...options.lod };
+    this.cfg = normaliseLod({ ...DEFAULT_LOD, ...options.lod });
+    this.input = normaliseInput({ ...DEFAULT_INPUT, ...options.input });
     this.provider = options.provider ?? autoProvider();
     this.colors = options.colors;
     this.onPictureError = options.onPictureError;
@@ -196,13 +242,13 @@ export class CanvasEngine {
       origin: options.origin ?? "floating",
       minZoom: options.minZoom ?? MIN_ZOOM,
       maxZoom: options.maxZoom ?? MAX_ZOOM,
+      maxPixelRatio: Math.max(0, options.maxPixelRatio ?? 0),
+      farLayer: options.farLayer ?? true,
+      pictureSmoothing: options.pictureSmoothing ?? "auto",
+      farZoomSlack: Math.max(1.01, options.farZoomSlack ?? FAR_ZOOM_SLACK),
+      contentVisibility: options.contentVisibility ?? true,
     };
-    if (options.reducedMotion !== undefined) this.reduced = options.reducedMotion;
-    else if (typeof matchMedia === "function") {
-      this.motionQuery = matchMedia("(prefers-reduced-motion: reduce)");
-      this.reduced = this.motionQuery.matches;
-      this.motionQuery.addEventListener?.("change", this.onMotionChange);
-    }
+    this.followSystemMotion(options.reducedMotion);
     this.lod = new LodScheduler(this.cfg, this.frames, {
       onPromote: (i, from) => {
         if (from === "staging") this.staging.delete(i);
@@ -225,6 +271,135 @@ export class CanvasEngine {
     return this.reduced;
   }
 
+  /** A fixed value, or undefined and null to follow the system setting from now on. */
+  private followSystemMotion(value: boolean | null | undefined) {
+    this.motionQuery?.removeEventListener?.("change", this.onMotionChange);
+    this.motionQuery = null;
+    if (typeof value === "boolean") {
+      this.reduced = value;
+      return;
+    }
+    this.reduced = false;
+    if (typeof matchMedia === "function") {
+      this.motionQuery = matchMedia("(prefers-reduced-motion: reduce)");
+      this.reduced = this.motionQuery.matches;
+      this.motionQuery.addEventListener?.("change", this.onMotionChange);
+    }
+  }
+
+  /**
+   * Changes settings while the canvas runs. Only the fields given change. Each takes effect on the next engine
+   * frame, and nothing is mounted again that does not have to be.
+   *
+   * - A new picture size or a new provider drops every picture, and they are taken again in the background.
+   * - Smaller picture budgets trim the caches at once.
+   * - New zoom limits pull the camera inside them.
+   *
+   * Out of range values are pulled into range: counts are whole numbers, `liveOutScale` is never above
+   * `liveInScale`, and the three picture sizes stay in order.
+   *
+   * @example
+   * engine.reconfigure({ lod: { maxLive: 8 }, input: { wheel: "zoom" }, reducedMotion: null });
+   */
+  reconfigure(patch: EngineReconfigure) {
+    let repaint = false;
+    if (patch.lod) {
+      const before = { ...this.cfg };
+      Object.assign(this.cfg, normaliseLod({ ...this.cfg, ...definedNumbers(patch.lod) }));
+      const changed = (k: keyof LodConfig) => before[k] !== this.cfg[k];
+      if (changed("tinyScale") || changed("thumbScale") || changed("previewScale")) this.invalidatePictures();
+      if (changed("marginPx")) this.measure();
+      if (changed("maxThumbs") || changed("maxPreviews")) this.trimPictures();
+      repaint = true;
+    }
+    if (patch.input) Object.assign(this.input, normaliseInput({ ...this.input, ...stripUndefined(patch.input) }));
+    if (patch.minZoom !== undefined || patch.maxZoom !== undefined) {
+      const lo = Math.max(1e-4, patch.minZoom ?? this.opts.minZoom);
+      const hi = Math.max(lo, patch.maxZoom ?? this.opts.maxZoom);
+      this.opts.minZoom = lo;
+      this.opts.maxZoom = hi;
+      if (this.cam.z < lo || this.cam.z > hi) {
+        this.stopTween();
+        this.moveTo(zoomAt(this.cam, this.cam.z, this.vw / 2, this.vh / 2, lo, hi));
+      }
+    }
+    if (patch.willChange !== undefined) {
+      this.opts.willChange = patch.willChange;
+      if (this.world) this.world.style.willChange = patch.willChange === "always" || (patch.willChange === "gesture" && this.moving) ? "transform" : "auto";
+    }
+    if (patch.warmup !== undefined && patch.warmup !== this.opts.warmup) {
+      this.opts.warmup = patch.warmup;
+      if (patch.warmup) {
+        this.warmDone = null;
+        this.warmStart = performance.now();
+        this.buildWarmOrder();
+      }
+      repaint = true;
+    }
+    if (patch.origin !== undefined && patch.origin !== this.opts.origin) {
+      this.opts.origin = patch.origin;
+      this.originX = 0;
+      this.originY = 0;
+      for (const f of this.frames) if (f.el) this.place(f);
+      this.rebase();
+      repaint = true;
+    }
+    if (patch.reducedMotion !== undefined) {
+      this.followSystemMotion(patch.reducedMotion);
+      if (this.reduced) this.stopTween();
+    }
+    if (patch.provider && patch.provider !== this.provider) {
+      this.provider = patch.provider;
+      this.invalidatePictures();
+    }
+    if (patch.maxPixelRatio !== undefined) {
+      this.opts.maxPixelRatio = Math.max(0, patch.maxPixelRatio);
+      this.measure();
+      repaint = true;
+    }
+    if (patch.farLayer !== undefined) {
+      this.opts.farLayer = patch.farLayer;
+      if (this.far) this.far.canvas.style.visibility = patch.farLayer ? "" : "hidden";
+      repaint = true;
+    }
+    if (patch.pictureSmoothing !== undefined) {
+      this.opts.pictureSmoothing = patch.pictureSmoothing;
+      repaint = true;
+    }
+    if (patch.farZoomSlack !== undefined) this.opts.farZoomSlack = Math.max(1.01, patch.farZoomSlack);
+    if (patch.contentVisibility !== undefined) {
+      this.opts.contentVisibility = patch.contentVisibility;
+      this.viewport?.toggleAttribute("data-ic-no-cv", !patch.contentVisibility);
+    }
+    if (repaint) this.repaint();
+  }
+
+  /** Every setting the engine is running with, as plain data. */
+  getOptions(): EngineSettings {
+    return {
+      lod: { ...this.cfg },
+      input: { ...this.input },
+      provider: this.provider.name,
+      minZoom: this.opts.minZoom,
+      maxZoom: this.opts.maxZoom,
+      willChange: this.opts.willChange,
+      warmup: this.opts.warmup,
+      origin: this.opts.origin,
+      reducedMotion: this.reduced,
+      followsSystemMotion: this.motionQuery !== null,
+      maxPixelRatio: this.opts.maxPixelRatio,
+      farLayer: this.opts.farLayer,
+      pictureSmoothing: this.opts.pictureSmoothing,
+      farZoomSlack: this.opts.farZoomSlack,
+      contentVisibility: this.opts.contentVisibility,
+    };
+  }
+
+  /** The cells of the spatial index that hold at least one frame, in world pixels. For debugging overlays. */
+  debugCells(): Rect[] {
+    return this.index.cellRects();
+  }
+
   /* ------------------------------------------------------------------ setup */
 
   /**
@@ -239,6 +414,8 @@ export class CanvasEngine {
     this.world = world;
     this.far = new FarRenderer(canvas);
     if (this.colors) this.far.colors = { ...this.far.colors, ...this.colors };
+    if (!this.opts.farLayer) canvas.style.visibility = "hidden";
+    viewport.toggleAttribute("data-ic-no-cv", !this.opts.contentVisibility);
     this.measure();
     this.resizeObserver = new ResizeObserver(() => {
       this.measure();
@@ -270,7 +447,8 @@ export class CanvasEngine {
     if (!this.viewport || !this.far) return;
     this.vw = Math.max(1, this.viewport.clientWidth);
     this.vh = Math.max(1, this.viewport.clientHeight);
-    this.dpr = window.devicePixelRatio || 1;
+    const dpr = window.devicePixelRatio || 1;
+    this.dpr = this.opts.maxPixelRatio > 0 ? Math.min(dpr, this.opts.maxPixelRatio) : dpr;
     this.far.resize(this.vw, this.vh, this.dpr, this.cfg.marginPx);
     this.farDirty = true;
   }
@@ -511,15 +689,20 @@ export class CanvasEngine {
     const k = drawn ? cam.z / drawn.z : 1;
     let fx = 0;
     let fy = 0;
-    let redraw = this.farDirty || !drawn || k > FAR_ZOOM_SLACK || k < 1 / FAR_ZOOM_SLACK;
+    const slack = this.opts.farZoomSlack;
+    let redraw = this.farDirty || !drawn || k > slack || k < 1 / slack;
     if (drawn && !redraw) {
       /* Where the old drawing has to sit to match the new camera, and whether it still covers the viewport. */
       fx = cam.x - k * drawn.x;
       fy = cam.y - k * drawn.y;
       if (fx - k * o > 0 || fy - k * o > 0 || fx + k * (this.vw + o) < this.vw || fy + k * (this.vh + o) < this.vh) redraw = true;
     }
-    if (redraw) {
-      this.far.draw(cam, this.frames, this.visible, this.visibleCount, this.selected, !this.moving);
+    if (!this.opts.farLayer) {
+      /* Hidden. Nothing is drawn, and the next drawing after it is shown again starts fresh. */
+      this.farCam = null;
+    } else if (redraw) {
+      const smoothing = this.opts.pictureSmoothing;
+      this.far.draw(cam, this.frames, this.visible, this.visibleCount, this.selected, smoothing === "auto" ? (this.moving ? "low" : "high") : smoothing);
       this.far.canvas.style.transform = "none";
       this.farCam = { ...cam };
       this.farDirty = false;
@@ -575,7 +758,7 @@ export class CanvasEngine {
       } else if (f.el) ready.push(i);
     }
 
-    if (this.capturesInFlight < 2) {
+    if (this.capturesInFlight < this.cfg.captureConcurrency) {
       /* A live frame with no picture yet gets one. A stale picture waits until the frame stops being live, so
          nothing is copied while somebody is typing in it. */
       for (const i of this.lod.live) {
@@ -600,12 +783,12 @@ export class CanvasEngine {
        for, then every frame that has none at all, nearest the view first. */
     let staged = 0;
     let loads = 0;
-    while (this.staging.size < STAGING_MAX && staged < STAGING_PER_FRAME) {
+    while (this.staging.size < this.cfg.stagingMax && staged < this.cfg.stagingPerFrame) {
       const next = this.nextToStage();
       if (next < 0) break;
       if (this.mountless(frames[next])) {
         /* A picture that comes from a file needs no mounted screen. A few are loaded at a time. */
-        if (this.staticInFlight >= STATIC_MAX || ++loads > STAGING_PER_FRAME) {
+        if (this.staticInFlight >= this.cfg.fileLoadsMax || ++loads > this.cfg.stagingPerFrame) {
           this.warmCursor = Math.max(0, this.warmCursor - 1);
           more = true;
           break;
@@ -623,8 +806,9 @@ export class CanvasEngine {
     }
 
     /* Take the pictures in one go once a group is mounted, or once nothing more is on its way. */
-    if (ready.length && this.capturesInFlight < 1 && (ready.length >= STAGING_GROUP || staged === 0)) {
-      void this.captureGroup(ready.slice(0, STAGING_MAX));
+    /* One group at a time, and only while a slot is left over for the live and parked frames above. */
+    if (ready.length && this.capturesInFlight < Math.max(1, this.cfg.captureConcurrency - 1) && (ready.length >= this.cfg.stagingGroup || staged === 0)) {
+      void this.captureGroup(ready.slice(0, this.cfg.stagingMax));
     }
 
     if (this.warmDone === null && this.opts.warmup && this.frames.length && this.frames.every((f) => f.captured)) {
@@ -950,7 +1134,10 @@ export class CanvasEngine {
     let previews = 0;
     let placeholders = 0;
     let bytes = 0;
+    let owed = 0;
+    const warming = this.opts.warmup && this.warmDone === null;
     for (const f of this.frames) {
+      if (warming && !f.captured && !f.capturing && !f.el) owed++;
       if (f.tiny) {
         pictures++;
         bytes += f.tiny.bytes;
@@ -994,6 +1181,8 @@ export class CanvasEngine {
       tickMsMax: this.tickMs.max,
       engineFrames: this.frameCount,
       farDraws: this.farDraws,
+      capturesInFlight: this.capturesInFlight,
+      pictureQueue: this.staging.size + owed,
     };
   }
 
@@ -1003,6 +1192,41 @@ export class CanvasEngine {
     this.frameCount = 0;
     this.farDraws = 0;
   }
+}
+
+/** Rounds the counts and puts the scales in order. Returns the same object. */
+function normaliseLod(cfg: LodConfig): LodConfig {
+  for (const k of LOD_COUNTS) cfg[k] = Math.max(LOD_AT_LEAST_ONE.has(k) ? 1 : 0, Math.round(cfg[k]));
+  cfg.liveInScale = Math.max(0.001, cfg.liveInScale);
+  cfg.liveOutScale = Math.max(0, Math.min(cfg.liveOutScale, cfg.liveInScale));
+  cfg.marginPx = Math.max(0, cfg.marginPx);
+  cfg.settleMs = Math.max(0, cfg.settleMs);
+  cfg.lateFrameMs = Math.max(0, cfg.lateFrameMs);
+  cfg.tinyScale = Math.min(1, Math.max(0.01, cfg.tinyScale));
+  cfg.thumbScale = Math.min(1, Math.max(cfg.tinyScale, cfg.thumbScale));
+  cfg.previewScale = Math.min(1, Math.max(cfg.thumbScale, cfg.previewScale));
+  return cfg;
+}
+
+/** Keeps the input numbers in a range that still works. Returns the same object. */
+function normaliseInput(cfg: InputConfig): InputConfig {
+  cfg.zoomSpeed = Math.max(0.0001, cfg.zoomSpeed);
+  cfg.friction = Math.min(0.95, Math.max(0.005, cfg.friction));
+  cfg.keyStep = Math.max(1, cfg.keyStep);
+  return cfg;
+}
+
+/** The finite numbers of a partial config. A missing or broken field leaves the setting as it is. */
+function definedNumbers<T extends object>(patch: Partial<T>): Partial<T> {
+  const out: Partial<T> = {};
+  for (const [k, v] of Object.entries(patch)) if (typeof v === "number" && Number.isFinite(v)) (out as Record<string, unknown>)[k] = v;
+  return out;
+}
+
+function stripUndefined<T extends object>(patch: Partial<T>): Partial<T> {
+  const out: Partial<T> = {};
+  for (const [k, v] of Object.entries(patch)) if (v !== undefined) (out as Record<string, unknown>)[k] = v;
+  return out;
 }
 
 function downscale(p: Picture, ratio: number, scale: number): Picture {

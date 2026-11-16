@@ -76,6 +76,26 @@ Mounting a screen is the one expensive step, so it is rationed.
 - Two in a frame when the camera is still.
 - Two evictions in a frame.
 
+Each number is a field of `lod`: `mountsMoving`, `lateFrameMs`, `mountsStill` and `evictionsPerFrame`. Picture work has its own: `stagingMax`, `stagingPerFrame`, `stagingGroup`, `captureConcurrency` and `fileLoadsMax`.
+
+## Changing settings while it runs
+
+`engine.reconfigure(patch)` changes any setting on a running canvas. Only the fields given change. `engine.getOptions()` returns every setting in force, as plain data.
+
+```ts
+engine.reconfigure({ lod: { maxLive: 8 }, input: { wheel: "zoom" }, reducedMotion: null })
+```
+
+- A new picture size or a new provider drops every picture. They are taken again in the background.
+- Smaller picture budgets trim the caches at once.
+- New zoom limits pull the camera inside them.
+- `reducedMotion: null` goes back to following the system setting.
+- Values out of range are pulled into range. `liveOutScale` is never above `liveInScale`, and the three picture sizes stay in order.
+
+Input settings live in `engine.input` and are read on every event. They cover what a plain scroll does, zoom speed, the glide and its friction, the mouse button that pans from anywhere, Space to pan, and the arrow key step.
+
+The demo's control panel is built on these two calls. See [controls.md](controls.md).
+
 A parked frame past the budget is unmounted, oldest first. If someone used the screen, its picture is taken on the way out, so the far view shows what they left. A screen that is mounted again after eviction starts from its declared state.
 
 ## Pictures

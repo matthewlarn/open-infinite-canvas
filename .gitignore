@@ -6,3 +6,4 @@ bench/results/
 test-results/
 playwright-report/
 .DS_Store
+apps/demo/public/shots/

@@ -28,10 +28,10 @@ function canScroll(target: Element | null, stop: Element, dx: number, dy: number
 /**
  * Pointer, wheel, pinch and keyboard handling for one viewport.
  *
- *   Scroll or two-finger drag    pan
+ *   Scroll or two-finger drag    pan (or zoom, with `input.wheel` set to `zoom`)
  *   Pinch, or Ctrl/Cmd + scroll  zoom toward the pointer
  *   Drag empty canvas            pan, with a short glide on release
- *   Middle button, or Space      pan from anywhere
+ *   Middle button, or Space      pan from anywhere (the button and Space are settings)
  *   Arrow keys                   pan (Shift for larger steps)
  *   + and -                      zoom about the centre
  *   0                            100%
@@ -39,6 +39,8 @@ function canScroll(target: Element | null, stop: Element, dx: number, dy: number
  *   2                            fit the selected frame
  *
  * Ctrl/Cmd + plus and minus are left alone. They belong to the browser's own zoom, which some people depend on.
+ *
+ * The settings are read from `engine.input` on every event, so `engine.reconfigure({ input })` takes effect at once.
  *
  * @returns A function that removes every listener.
  */
@@ -48,8 +50,10 @@ export function attachInput(engine: CanvasEngine, viewport: HTMLElement, options
 
   const onWheel = (e: WheelEvent) => {
     const target = e.target as Element | null;
-    const zooming = e.ctrlKey || e.metaKey;
-    if (!zooming && target && options.isInteractive(target) && canScroll(target, viewport, e.deltaX, e.deltaY)) return;
+    const pinch = e.ctrlKey || e.metaKey;
+    if (!pinch && target && options.isInteractive(target) && canScroll(target, viewport, e.deltaX, e.deltaY)) return;
+    /* Shift and a scroll always pans sideways, so a mouse still has a way to pan when the wheel zooms. */
+    const zooming = pinch || (engine.input.wheel === "zoom" && !e.shiftKey);
     e.preventDefault();
     const r = rect();
     const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? r.height : 1;
@@ -58,7 +62,7 @@ export function attachInput(engine: CanvasEngine, viewport: HTMLElement, options
     if (zooming) {
       /* A pinch arrives as small steps, a wheel notch as a large one. The cap keeps a notch from jumping. */
       const step = Math.max(-50, Math.min(50, dy));
-      engine.zoomAtPoint(engine.getCamera().z * Math.exp(-step * 0.01), e.clientX - r.left, e.clientY - r.top);
+      engine.zoomAtPoint(engine.getCamera().z * Math.exp(-step * engine.input.zoomSpeed), e.clientX - r.left, e.clientY - r.top);
       return;
     }
     if (e.shiftKey && dx === 0) [dx, dy] = [dy, 0];
@@ -93,8 +97,10 @@ export function attachInput(engine: CanvasEngine, viewport: HTMLElement, options
   const onPointerDown = (e: PointerEvent) => {
     stopGlide();
     const target = e.target as Element;
-    const forced = space || e.button === 1;
-    if (e.button !== 0 && e.button !== 1) return;
+    const { panButton, spaceDrag } = engine.input;
+    const panWith = panButton === "middle" ? 1 : panButton === "right" ? 2 : -1;
+    const forced = (space && spaceDrag) || e.button === panWith;
+    if (e.button !== 0 && !forced) return;
     if (!forced && options.isInteractive(target)) return;
     e.preventDefault();
     viewport.setPointerCapture(e.pointerId);
@@ -147,7 +153,7 @@ export function attachInput(engine: CanvasEngine, viewport: HTMLElement, options
       return;
     }
     /* A short glide after a flick. Skipped for anyone who asked for less motion. */
-    if (engine.reducedMotion || d.samples.length < 2) return;
+    if (engine.reducedMotion || !engine.input.inertia || d.samples.length < 2) return;
     const first = d.samples[0];
     const last = d.samples[d.samples.length - 1];
     const dt = last.t - first.t;
@@ -160,7 +166,7 @@ export function attachInput(engine: CanvasEngine, viewport: HTMLElement, options
       const elapsed = Math.min(40, now - prev);
       prev = now;
       engine.panBy(vx * elapsed, vy * elapsed);
-      const decay = Math.pow(0.94, elapsed / 16.7);
+      const decay = Math.pow(1 - engine.input.friction, elapsed / 16.7);
       vx *= decay;
       vy *= decay;
       glide = Math.hypot(vx, vy) > 0.02 ? requestAnimationFrame(step) : 0;
@@ -180,13 +186,13 @@ export function attachInput(engine: CanvasEngine, viewport: HTMLElement, options
     return !!el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
   };
   const onKeyDown = (e: KeyboardEvent) => {
-    if (e.code === "Space" && !typing(e.target) && !options.isInteractive(e.target as Element)) space = true;
+    if (e.code === "Space" && engine.input.spaceDrag && !typing(e.target) && !options.isInteractive(e.target as Element)) space = true;
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     /* Shortcuts act only when the canvas itself has focus, never while a control inside a screen does. */
     if (e.target !== viewport) return;
     const cam = engine.getCamera();
     const { w, h } = engine.getViewport();
-    const step = e.shiftKey ? 256 : 64;
+    const step = engine.input.keyStep * (e.shiftKey ? 4 : 1);
     switch (e.key) {
       case "ArrowLeft": engine.panBy(step, 0); break;
       case "ArrowRight": engine.panBy(-step, 0); break;
@@ -205,6 +211,10 @@ export function attachInput(engine: CanvasEngine, viewport: HTMLElement, options
       default: return;
     }
     e.preventDefault();
+  };
+  /* With the right button set to pan, its menu would open at the end of every drag. */
+  const onContextMenu = (e: MouseEvent) => {
+    if (engine.input.panButton === "right") e.preventDefault();
   };
   const onKeyUp = (e: KeyboardEvent) => {
     if (e.code === "Space") space = false;
@@ -233,6 +243,7 @@ export function attachInput(engine: CanvasEngine, viewport: HTMLElement, options
   viewport.addEventListener("pointerup", onPointerUp);
   viewport.addEventListener("pointercancel", onPointerUp);
   viewport.addEventListener("dblclick", onDoubleClick);
+  viewport.addEventListener("contextmenu", onContextMenu);
   window.addEventListener("keydown", onKeyDown);
   window.addEventListener("keyup", onKeyUp);
   window.addEventListener("blur", onBlur);
@@ -247,6 +258,7 @@ export function attachInput(engine: CanvasEngine, viewport: HTMLElement, options
     viewport.removeEventListener("pointerup", onPointerUp);
     viewport.removeEventListener("pointercancel", onPointerUp);
     viewport.removeEventListener("dblclick", onDoubleClick);
+    viewport.removeEventListener("contextmenu", onContextMenu);
     window.removeEventListener("keydown", onKeyDown);
     window.removeEventListener("keyup", onKeyUp);
     window.removeEventListener("blur", onBlur);

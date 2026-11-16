@@ -14,6 +14,8 @@
     "bench": "pnpm build && pnpm --filter open-infinite-canvas-bench bench",
     "bench:quick": "pnpm build && pnpm --filter open-infinite-canvas-bench bench:quick",
     "demo": "pnpm build && pnpm --filter open-infinite-canvas-demo dev",
+    "demo:host": "pnpm build && pnpm --filter open-infinite-canvas-demo host",
+    "demo:shots": "pnpm build && pnpm --filter open-infinite-canvas-demo build && node apps/demo/scripts/shots.mjs",
     "lint:prose": "node scripts/lint-prose.mjs"
   },
   "devDependencies": {

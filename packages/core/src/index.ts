@@ -7,14 +7,14 @@
  * @packageDocumentation
  */
 export { CanvasEngine, createCanvas } from "./engine.js";
-export type { EngineFrame, EngineOptions, EngineStats, MountedFrame, Structure } from "./engine.js";
-export { DEFAULT_LOD } from "./types.js";
-export type { Camera, FrameSpec, LodConfig, Rect, Tier } from "./types.js";
+export type { EngineFrame, EngineOptions, EngineReconfigure, EngineSettings, EngineStats, MountedFrame, Structure } from "./engine.js";
+export { DEFAULT_INPUT, DEFAULT_LOD } from "./types.js";
+export type { Camera, FrameSpec, InputConfig, LodConfig, Rect, Tier } from "./types.js";
 
 export { MAX_ZOOM, MIN_ZOOM, clamp, fitRect, intersects, lerpCamera, screenToWorld, unionRects, viewRect, worldToScreen, zoomAt } from "./camera.js";
 export { GridIndex } from "./spatial.js";
 export { LodScheduler, mountBudget, pickLive } from "./lod.js";
-export type { LodFrame, LodHooks, LodInput, LodResult } from "./lod.js";
+export type { LodFrame, LodHooks, LodInput, LodResult, MountBudgetConfig } from "./lod.js";
 export { layoutRows, neighbourIndex, readingOrder } from "./layout.js";
 export type { Direction, LayoutRowsOptions } from "./layout.js";
 

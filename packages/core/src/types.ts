@@ -66,6 +66,24 @@ export type LodConfig = {
   maxPreviews: number;
   /** Milliseconds without a camera change before the view counts as settled. */
   settleMs: number;
+  /** Most screens mounted in one animation frame while the camera is still. */
+  mountsStill: number;
+  /** Most screens mounted in one animation frame while the camera moves. */
+  mountsMoving: number;
+  /** While the camera moves, nothing is mounted after an animation frame that took longer than this, in milliseconds. */
+  lateFrameMs: number;
+  /** Most parked screens unmounted in one animation frame. */
+  evictionsPerFrame: number;
+  /** Most frames mounted at once only to have their picture taken. */
+  stagingMax: number;
+  /** Most frames newly mounted for a picture in one animation frame. */
+  stagingPerFrame: number;
+  /** Pictures of staging frames are taken together once this many are mounted. */
+  stagingGroup: number;
+  /** Most pictures being made at once. */
+  captureConcurrency: number;
+  /** Most pictures being loaded from files at once. */
+  fileLoadsMax: number;
 };
 
 /** The defaults: 24 live screens, 24 parked, 400 middle pictures, 64 sharp pictures. */
@@ -81,4 +99,45 @@ export const DEFAULT_LOD: LodConfig = {
   maxThumbs: 400,
   maxPreviews: 64,
   settleMs: 140,
+  mountsStill: 2,
+  mountsMoving: 1,
+  lateFrameMs: 24,
+  evictionsPerFrame: 2,
+  stagingMax: 8,
+  stagingPerFrame: 4,
+  stagingGroup: 4,
+  captureConcurrency: 2,
+  fileLoadsMax: 6,
+};
+
+/** How pointer, wheel and keys move the camera. Every field has a default in {@link DEFAULT_INPUT}. */
+export type InputConfig = {
+  /**
+   * What a plain scroll does. `pan` suits a trackpad, where two fingers pan and a pinch zooms. `zoom` suits a
+   * mouse wheel. A pinch, or a scroll with Ctrl or Cmd held, always zooms.
+   */
+  wheel: "pan" | "zoom";
+  /** How fast a scroll or a pinch zooms. The zoom is multiplied by `exp(-delta * zoomSpeed)` for each scroll step. */
+  zoomSpeed: number;
+  /** True to glide on after a drag is released. Off for anyone who asked for reduced motion, whatever this says. */
+  inertia: boolean;
+  /** The share of a glide's speed lost in each 60 Hz frame. Higher stops sooner. */
+  friction: number;
+  /** The mouse button that pans from anywhere, over live screens too. `none` leaves only a drag on empty canvas. */
+  panButton: "middle" | "right" | "none";
+  /** True to pan by holding Space and dragging, over live screens too. */
+  spaceDrag: boolean;
+  /** Screen pixels an arrow key pans. Shift pans four times as far. */
+  keyStep: number;
+};
+
+/** The defaults: scroll pans, a short glide, the middle button and Space pan from anywhere, arrow keys pan 64 pixels. */
+export const DEFAULT_INPUT: InputConfig = {
+  wheel: "pan",
+  zoomSpeed: 0.01,
+  inertia: true,
+  friction: 0.06,
+  panButton: "middle",
+  spaceDrag: true,
+  keyStep: 64,
 };

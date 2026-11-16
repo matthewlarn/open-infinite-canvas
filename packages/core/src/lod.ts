@@ -1,4 +1,4 @@
-import type { Camera, LodConfig, Rect, Tier } from "./types.js";
+import { DEFAULT_LOD, type Camera, type LodConfig, type Rect, type Tier } from "./types.js";
 
 /** What the scheduler needs to know about a frame. It mutates `tier`, `prio` and `lastLiveAt` in place. */
 export type LodFrame = Rect & {
@@ -45,15 +45,18 @@ export type LodResult = {
   pending: boolean;
 };
 
+/** The budgets {@link mountBudget} reads. */
+export type MountBudgetConfig = Pick<LodConfig, "mountsStill" | "mountsMoving" | "lateFrameMs">;
+
 /**
  * How many screens may be mounted in this animation frame.
  *
- * Mounting a screen is the one expensive step. One per frame while the camera moves, none after a late frame,
- * two per frame when the camera is still.
+ * Mounting a screen is the one expensive step. By default one per frame while the camera moves, none after a
+ * late frame, two per frame when the camera is still. Pass `cfg` to change the numbers.
  */
-export function mountBudget(moving: boolean, lastFrameMs: number): number {
-  if (!moving) return 2;
-  return lastFrameMs > 24 ? 0 : 1;
+export function mountBudget(moving: boolean, lastFrameMs: number, cfg: MountBudgetConfig = DEFAULT_LOD): number {
+  if (!moving) return cfg.mountsStill;
+  return lastFrameMs > cfg.lateFrameMs ? 0 : cfg.mountsMoving;
 }
 
 /**
@@ -103,8 +106,12 @@ export class LodScheduler<F extends LodFrame = LodFrame> {
   private want: number[] = [];
   private wantSet = new Set<number>();
 
+  /**
+   * @param cfg Read on every pass, so changing a field in place takes effect on the next one. Budgets left out
+   *   come from {@link DEFAULT_LOD}.
+   */
   constructor(
-    private cfg: Pick<LodConfig, "liveInScale" | "liveOutScale" | "maxLive" | "maxParked">,
+    private cfg: Pick<LodConfig, "liveInScale" | "liveOutScale" | "maxLive" | "maxParked"> & Partial<MountBudgetConfig & Pick<LodConfig, "evictionsPerFrame">>,
     private frames: readonly F[],
     private hooks: LodHooks = {},
   ) {}
@@ -130,7 +137,7 @@ export class LodScheduler<F extends LodFrame = LodFrame> {
       }
     }
 
-    let budget = mountBudget(input.moving, input.lastFrameMs);
+    let budget = mountBudget(input.moving, input.lastFrameMs, { ...DEFAULT_LOD, ...cfg });
     let pending = false;
     for (const i of want) {
       if (frames[i].tier === "live") continue;
@@ -143,8 +150,8 @@ export class LodScheduler<F extends LodFrame = LodFrame> {
       changed = true;
     }
 
-    /* Hidden frames past the budget are unmounted, oldest first, two per frame. */
-    let evict = 2;
+    /* Hidden frames past the budget are unmounted, oldest first, two per frame by default. */
+    let evict = cfg.evictionsPerFrame ?? DEFAULT_LOD.evictionsPerFrame;
     while (this.parked.length > cfg.maxParked && evict-- > 0) {
       this.evict(this.parked.shift()!);
       changed = true;

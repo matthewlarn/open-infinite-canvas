@@ -41,6 +41,8 @@
 }
 /* Mounted so a picture can be taken. Never laid out or painted. */
 .ic-frame[data-mode="staging"] { content-visibility: hidden; }
+/* With the engine's `contentVisibility` off, a staging frame is laid out but not seen. For measuring the difference. */
+.ic-viewport[data-ic-no-cv] .ic-frame[data-mode="staging"] { content-visibility: visible; visibility: hidden; }
 .ic-frame[data-mode="parked"] { display: none; }
 
 /* Iframe mode. The iframe fills its frame. */

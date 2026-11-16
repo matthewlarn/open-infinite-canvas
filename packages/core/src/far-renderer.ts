@@ -75,7 +75,8 @@ export class FarRenderer {
     s.height = `${ch}px`;
   }
 
-  draw(cam: Camera, frames: FarFrame[], visible: number[], count: number, selected: number, highQuality: boolean) {
+  /** @param quality How pictures are smoothed when they are scaled. `off` draws hard pixels. */
+  draw(cam: Camera, frames: FarFrame[], visible: number[], count: number, selected: number, quality: "high" | "low" | "off") {
     const { ctx, dpr } = this;
     const z = cam.z;
     /* Everything below is in viewport coordinates. The transform shifts it into the larger canvas. */
@@ -83,8 +84,8 @@ export class FarRenderer {
     ctx.setTransform(dpr, 0, 0, dpr, o * dpr, o * dpr);
     ctx.fillStyle = this.colors.canvas;
     ctx.fillRect(-o, -o, this.vw + o * 2, this.vh + o * 2);
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = highQuality ? "high" : "low";
+    ctx.imageSmoothingEnabled = quality !== "off";
+    ctx.imageSmoothingQuality = quality === "high" ? "high" : "low";
 
     /* Device pixels the picture must supply for each CSS pixel of the frame. */
     const need = z * dpr;

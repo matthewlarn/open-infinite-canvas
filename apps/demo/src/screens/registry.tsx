@@ -47,17 +47,27 @@ export const DEVICE_SIZE: Record<Device, { w: number; h: number }> = {
 
 export type DemoFrame = FrameSpec & { variant: number; seed: number; device: Device };
 
-const GAP_X = 80;
-const GAP_Y = 140;
+/** How {@link buildFrames} lays the screens out. Every field is optional. */
+export type LayoutOptions = {
+  /** Screens in a row. 0, the default, picks a count that makes the world roughly as wide as a 16:10 screen. */
+  columns?: number;
+  /** Space between screens in a row, in world pixels. Rows get 60 more, for the names. Defaults to 80. */
+  gap?: number;
+  /** `mixed`, the default, makes eight in ten screens phones and the rest tablets and desktops. */
+  device?: Device | "mixed";
+};
 
 /**
- * `count` frames, eight in ten of them phones. Laid out in rows by device so the world is roughly as wide as a
- * 16:10 screen is. Every position is a plain number in world pixels. Nothing is measured from the DOM.
+ * `count` frames, eight in ten of them phones unless one device is asked for. Laid out in rows by device. Every
+ * position is a plain number in world pixels. Nothing is measured from the DOM.
  */
-export function buildFrames(count: number): DemoFrame[] {
+export function buildFrames(count: number, layout: LayoutOptions = {}): DemoFrame[] {
+  const gapX = layout.gap ?? 80;
+  const gapY = gapX + 60;
+  const only = layout.device && layout.device !== "mixed" ? layout.device : null;
   const buckets: Record<Device, DemoFrame[]> = { phone: [], tablet: [], desktop: [] };
   for (let i = 0; i < count; i++) {
-    const device: Device = i % 10 === 7 ? "tablet" : i % 10 === 9 ? "desktop" : "phone";
+    const device: Device = only ?? (i % 10 === 7 ? "tablet" : i % 10 === 9 ? "desktop" : "phone");
     const variant = i % VARIANTS.length;
     const v = VARIANTS[variant];
     const size = DEVICE_SIZE[device];
@@ -76,19 +86,19 @@ export function buildFrames(count: number): DemoFrame[] {
     });
   }
   let area = 0;
-  for (const d of Object.keys(buckets) as Device[]) area += buckets[d].length * (DEVICE_SIZE[d].w + GAP_X) * (DEVICE_SIZE[d].h + GAP_Y);
-  const rowWidth = Math.max(DEVICE_SIZE.desktop.w + GAP_X, Math.sqrt(area * 1.6));
+  for (const d of Object.keys(buckets) as Device[]) area += buckets[d].length * (DEVICE_SIZE[d].w + gapX) * (DEVICE_SIZE[d].h + gapY);
+  const rowWidth = Math.max(DEVICE_SIZE.desktop.w + gapX, Math.sqrt(area * 1.6));
   const out: DemoFrame[] = [];
   let y = 0;
   for (const d of ["phone", "tablet", "desktop"] as Device[]) {
     const size = DEVICE_SIZE[d];
-    const perRow = Math.max(1, Math.floor(rowWidth / (size.w + GAP_X)));
+    const perRow = layout.columns && layout.columns > 0 ? Math.round(layout.columns) : Math.max(1, Math.floor(rowWidth / (size.w + gapX)));
     buckets[d].forEach((f, i) => {
-      f.x = (i % perRow) * (size.w + GAP_X);
-      f.y = y + Math.floor(i / perRow) * (size.h + GAP_Y);
+      f.x = (i % perRow) * (size.w + gapX);
+      f.y = y + Math.floor(i / perRow) * (size.h + gapY);
       out.push(f);
     });
-    if (buckets[d].length) y += Math.ceil(buckets[d].length / perRow) * (size.h + GAP_Y) + GAP_Y;
+    if (buckets[d].length) y += Math.ceil(buckets[d].length / perRow) * (size.h + gapY) + gapY;
   }
   return out;
 }

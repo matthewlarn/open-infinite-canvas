@@ -78,6 +78,23 @@ export class GridIndex {
     return n;
   }
 
+  /** The side of one cell in world pixels. */
+  get cellSize(): number {
+    return this.cell;
+  }
+
+  /** Every cell that holds at least one rectangle, as a world rectangle. For debugging overlays. */
+  cellRects(): Rect[] {
+    const out: Rect[] = [];
+    const c = this.cell;
+    for (const k of this.cells.keys()) {
+      const cx = (k >>> 16) - 32768;
+      const cy = (k & 0xffff) - 32768;
+      out.push({ x: cx * c, y: cy * c, w: c, h: c });
+    }
+    return out;
+  }
+
   /** The topmost frame under a world point, or -1. Later frames sit above earlier ones. */
   hit(wx: number, wy: number): number {
     const list = this.cells.get(this.key(Math.floor(wx / this.cell), Math.floor(wy / this.cell)));
