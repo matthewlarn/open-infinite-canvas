@@ -2,6 +2,6 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
   "installCommand": "pnpm install --frozen-lockfile",
-  "buildCommand": "pnpm build && pnpm --filter open-infinite-canvas-demo build",
+  "buildCommand": "pnpm --filter ./packages/core build && pnpm --filter ./packages/react build && pnpm --filter ./apps/demo build",
   "outputDirectory": "apps/demo/dist"
 }
